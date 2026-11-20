@@ -8,7 +8,6 @@ pipeline {
     environment {
         APP_PORT = '5001'
         DEPLOY_DIR = 'deployment'
-        VENV_DIR = "/tmp/flask-ci-${BUILD_TAG}"
     }
 
     stages {
@@ -19,9 +18,11 @@ pipeline {
                     set -eu
                     command -v python3
                     python3 -c 'import sys; assert (3, 12) <= sys.version_info[:2] < (3, 14), "Python 3.12 or 3.13 is required"'
-                    env -u PYTHONHOME -u PYTHONPATH python3 -m venv --without-pip "$VENV_DIR"
-                    site_packages=$("$VENV_DIR/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-                    PYTHONPATH=/usr/lib/python3/dist-packages python3 -m pip install --target "$site_packages" -r requirements.txt
+                    python3 -m venv --without-pip .venv
+                    trap 'rm -f get-pip.py' EXIT
+                    python3 -c 'from urllib.request import urlretrieve; urlretrieve("https://bootstrap.pypa.io/get-pip.py", "get-pip.py")'
+                    .venv/bin/python get-pip.py
+                    .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
                 '''
             }
         }
@@ -29,7 +30,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo 'TEST: Running automated unit tests'
-                sh 'env -u PYTHONHOME -u PYTHONPATH "$VENV_DIR/bin/python" -m unittest -v test_app'
+                sh '.venv/bin/python -m unittest -v test_app'
             }
         }
 
@@ -56,7 +57,7 @@ pipeline {
                     fi
 
                     nohup env -u PYTHONHOME -u PYTHONPATH APP_PORT="$APP_PORT" \
-                        "$VENV_DIR/bin/python" \
+                        "$WORKSPACE/.venv/bin/python" \
                         "$WORKSPACE/$DEPLOY_DIR/app.py" \
                         > "$WORKSPACE/$DEPLOY_DIR/app.log" 2>&1 \
                         < /dev/null &
@@ -69,7 +70,7 @@ pipeline {
             steps {
                 echo 'VERIFY: Checking the deployed application over HTTP'
                 sh '''
-                    env -u PYTHONHOME -u PYTHONPATH APP_PORT="$APP_PORT" "$VENV_DIR/bin/python" - <<'PY'
+                    APP_PORT="$APP_PORT" .venv/bin/python - <<'PY'
 import os
 import time
 import urllib.error

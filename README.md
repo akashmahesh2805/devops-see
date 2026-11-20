@@ -4,11 +4,11 @@ This repository contains a small Flask service and a declarative Jenkins pipelin
 
 ## Jenkins agent requirements
 
-- Python 3.12 or 3.13 with the matching `venv` package and `pip` (for example, `python3.13-venv` on Debian)
+- Python 3.12 or 3.13 with `venv`
 - A POSIX shell and Git
 - Network access to install the pinned packages from `requirements.txt`
 
-The Python requirement applies to the agent that runs the Pipeline, not just the Jenkins controller. The Build stage checks the Python version and stops immediately if it is outside the supported range.
+The Python requirement applies to the agent that runs the Pipeline, not just the Jenkins controller. The Build stage checks the Python version and stops immediately if it is outside the supported range. It bootstraps pip inside its isolated virtual environment, so a system-wide pip installation is not required; the agent needs access to `bootstrap.pypa.io` and PyPI.
 
 ## Configure a Jenkins Pipeline job
 
