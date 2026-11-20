@@ -18,7 +18,7 @@ pipeline {
                     set -eu
                     command -v python3
                     python3 -c 'import sys; assert (3, 12) <= sys.version_info[:2] < (3, 14), "Python 3.12 or 3.13 is required"'
-                    python3 -m venv .venv
+                    python3 -m venv --clear .venv
                     .venv/bin/python -m pip install --upgrade pip
                     .venv/bin/python -m pip install -r requirements.txt
                 '''

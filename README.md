@@ -4,7 +4,7 @@ This repository contains a small Flask service and a declarative Jenkins pipelin
 
 ## Jenkins agent requirements
 
-- Python 3.12 or 3.13 with `venv` and `pip`
+- Python 3.12 or 3.13 with the matching `venv` package and `pip` (for example, `python3.13-venv` on Debian)
 - A POSIX shell and Git
 - Network access to install the pinned packages from `requirements.txt`
 
