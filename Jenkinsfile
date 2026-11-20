@@ -21,7 +21,7 @@ pipeline {
                     python3 -c 'import sys; assert (3, 12) <= sys.version_info[:2] < (3, 14), "Python 3.12 or 3.13 is required"'
                     env -u PYTHONHOME -u PYTHONPATH python3 -m venv --without-pip "$VENV_DIR"
                     site_packages=$("$VENV_DIR/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-                    env -u PYTHONHOME -u PYTHONPATH python3 -m pip install --target "$site_packages" -r requirements.txt
+                    PYTHONPATH=/usr/lib/python3/dist-packages python3 -m pip install --target "$site_packages" -r requirements.txt
                 '''
             }
         }
