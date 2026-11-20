@@ -8,6 +8,7 @@ pipeline {
     environment {
         APP_PORT = '5001'
         DEPLOY_DIR = 'deployment'
+        VENV_DIR = "/tmp/flask-ci-${BUILD_TAG}"
     }
 
     stages {
@@ -18,9 +19,9 @@ pipeline {
                     set -eu
                     command -v python3
                     python3 -c 'import sys; assert (3, 12) <= sys.version_info[:2] < (3, 14), "Python 3.12 or 3.13 is required"'
-                    python3 -m venv --clear .venv
-                    .venv/bin/python -m pip install --upgrade pip
-                    .venv/bin/python -m pip install -r requirements.txt
+                    python3 -m venv "$VENV_DIR"
+                    "$VENV_DIR/bin/python" -m pip install --upgrade pip
+                    "$VENV_DIR/bin/python" -m pip install -r requirements.txt
                 '''
             }
         }
@@ -28,7 +29,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo 'TEST: Running automated unit tests'
-                sh '.venv/bin/python -m unittest -v test_app'
+                sh '"$VENV_DIR/bin/python" -m unittest -v test_app'
             }
         }
 
@@ -55,7 +56,7 @@ pipeline {
                     fi
 
                     nohup env APP_PORT="$APP_PORT" \
-                        "$WORKSPACE/.venv/bin/python" \
+                        "$VENV_DIR/bin/python" \
                         "$WORKSPACE/$DEPLOY_DIR/app.py" \
                         > "$WORKSPACE/$DEPLOY_DIR/app.log" 2>&1 \
                         < /dev/null &
@@ -68,7 +69,7 @@ pipeline {
             steps {
                 echo 'VERIFY: Checking the deployed application over HTTP'
                 sh '''
-                    APP_PORT="$APP_PORT" .venv/bin/python - <<'PY'
+                    APP_PORT="$APP_PORT" "$VENV_DIR/bin/python" - <<'PY'
 import os
 import time
 import urllib.error
