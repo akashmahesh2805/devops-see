@@ -1,6 +1,9 @@
-
 pipeline {
     agent any
+
+    options {
+        disableConcurrentBuilds()
+    }
 
     environment {
         APP_PORT = '5001'
@@ -8,16 +11,15 @@ pipeline {
     }
 
     stages {
-
         stage('Build') {
             steps {
-                echo 'BUILD: Creating environment and installing dependencies'
-
+                echo 'BUILD: Creating a Python virtual environment and installing pinned dependencies'
                 sh '''
-                    /usr/bin/python3 -m venv .venv
-
+                    set -eu
+                    command -v python3
+                    python3 -c 'import sys; assert (3, 12) <= sys.version_info[:2] < (3, 14), "Python 3.12 or 3.13 is required"'
+                    python3 -m venv .venv
                     .venv/bin/python -m pip install --upgrade pip
-
                     .venv/bin/python -m pip install -r requirements.txt
                 '''
             }
@@ -26,20 +28,15 @@ pipeline {
         stage('Test') {
             steps {
                 echo 'TEST: Running automated unit tests'
-
-                sh '''
-                    .venv/bin/python -m unittest -v
-                '''
+                sh '.venv/bin/python -m unittest -v test_app'
             }
         }
 
         stage('Deploy') {
             steps {
-                echo 'DEPLOY: Copying application to deployment directory'
-
+                echo 'DEPLOY: Copying the application into the deployment directory'
                 sh '''
                     mkdir -p "$DEPLOY_DIR"
-
                     cp app.py requirements.txt "$DEPLOY_DIR"/
                 '''
             }
@@ -47,19 +44,21 @@ pipeline {
 
         stage('Run Application') {
             steps {
-                echo 'RUN: Starting deployed Flask application'
-
+                echo 'RUN: Starting the deployed Flask application'
                 sh '''
                     if [ -f "$DEPLOY_DIR/app.pid" ]; then
-                        kill "$(cat "$DEPLOY_DIR/app.pid")" 2>/dev/null || true
-                        sleep 1
+                        old_pid=$(cat "$DEPLOY_DIR/app.pid")
+                        if kill -0 "$old_pid" 2>/dev/null; then
+                            kill "$old_pid"
+                        fi
+                        rm -f "$DEPLOY_DIR/app.pid"
                     fi
 
-                    nohup "$WORKSPACE/.venv/bin/python" \
+                    nohup env APP_PORT="$APP_PORT" \
+                        "$WORKSPACE/.venv/bin/python" \
                         "$WORKSPACE/$DEPLOY_DIR/app.py" \
                         > "$WORKSPACE/$DEPLOY_DIR/app.log" 2>&1 \
                         < /dev/null &
-
                     echo $! > "$DEPLOY_DIR/app.pid"
                 '''
             }
@@ -67,34 +66,33 @@ pipeline {
 
         stage('Test Application') {
             steps {
-                echo 'VERIFY: Testing deployed Flask application'
-
+                echo 'VERIFY: Checking the deployed application over HTTP'
                 sh '''
                     APP_PORT="$APP_PORT" .venv/bin/python - <<'PY'
 import os
 import time
+import urllib.error
 import urllib.request
 
 url = "http://127.0.0.1:" + os.environ["APP_PORT"]
+last_error = None
 
 for attempt in range(15):
     try:
-        response = urllib.request.urlopen(url, timeout=3)
-
-        body = response.read().decode("utf-8")
-
-        print("HTTP Status:", response.status)
-        print("Response Body:", body)
-
-        assert response.status == 200
-        assert body == "Hello, Jenkins Multi-Stage Pipeline!"
-
+        with urllib.request.urlopen(url, timeout=3) as response:
+            body = response.read().decode("utf-8")
+            print("HTTP Status:", response.status)
+            print("Response Body:", body)
+            if response.status != 200:
+                raise AssertionError("Unexpected HTTP status: " + str(response.status))
+            if body != "Hello, Jenkins Multi-Stage Pipeline!":
+                raise AssertionError("Unexpected response body: " + repr(body))
         print("DEPLOYMENT VERIFICATION SUCCESSFUL")
         break
-
-    except Exception as error:
+    except (OSError, urllib.error.URLError) as error:
+        last_error = error
         if attempt == 14:
-            raise
+            raise RuntimeError("Deployed application did not become ready") from last_error
         time.sleep(1)
 PY
                 '''
@@ -104,13 +102,11 @@ PY
 
     post {
         success {
-            echo 'SUCCESS: CI/CD pipeline completed successfully!'
+            echo 'SUCCESS: CI/CD pipeline completed successfully.'
         }
-
         failure {
-            echo 'FAILURE: CI/CD pipeline failed. Check the console output.'
+            echo 'FAILURE: CI/CD pipeline failed; later stages were not run.'
         }
-
         always {
             echo 'Pipeline execution finished.'
         }
